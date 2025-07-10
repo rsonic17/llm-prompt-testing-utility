@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Env
+.env
+venv/
+.env.*
+
+# Uploads & attachments
+uploads/
+attachments/
+
+# IDE/editor
+.vscode/
+.idea/
+
+# OS junk
+.DS_Store
+Thumbs.db
