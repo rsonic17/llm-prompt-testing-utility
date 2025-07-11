@@ -1,86 +1,126 @@
+# 🧠 LLM-Powered Email Extraction App
 
-# 📧 LLM Email Parser App
+This Streamlit web app lets you upload `.eml` email files and use Anthropic Claude (via AWS Bedrock) to:
 
-An interactive Flask-based app that:
-- Accepts `.eml` email uploads
-- Parses HTML + attachments
-- Sends content to Claude via AWS Bedrock
-- Receives structured JSON + regex function
-- Safely runs regex and compares output
-- Displays everything in a Vue + Tailwind UI
+- Extract structured JSON data from emails
+- Automatically generate cleaner, reusable prompts
+- Compare prompt quality side-by-side in a 4-column interface
 
 ---
 
 ## 🚀 Features
 
-- Full HTML email rendering
-- Claude LLM integration via Bedrock
-- Safe regex `exec()` and field comparison
-- Confidence scoring + inline match analysis
-- Vue + Alpine + Prism-powered frontend
+- ✅ **.eml File Upload & Parsing** — Extracts `text`, `html`, sender, subject, attachments (PDFs included)
+- 🤖 **Claude-Powered Extraction** — Uses `user_prompt` to pull out JSON info from emails
+- ✨ **Improved Prompt Generator** — Claude rewrites your prompt in scalable, few-shot natural language
+- 📊 **Prompt Comparison Tool** — See a side-by-side markdown table comparing your prompt vs Claude’s
+- 🖼 **Fixed 4-Column UI** — Horizontal layout: Email Preview | JSON | Improved Prompt | Comparison
+- 🌙 **Dark Panel Layout** — Panels styled for readability in dark mode, no HTML clutter
 
 ---
 
-## 🛠 Setup
+## 🛠️ Technologies Used
 
-### 1. Clone & Create Environment
+| Tool            | Purpose                               |
+|-----------------|----------------------------------------|
+| **Streamlit**   | Frontend Web App                      |
+| **AWS Bedrock** | Claude 3 Haiku (LLM prompt processing) |
+| **boto3**       | Python SDK for AWS                    |
+| **PyPDF2**      | PDF Attachment Parsing                |
+| **BeautifulSoup** | HTML to Text Conversion             |
+| **Bleach**      | HTML Sanitization (optional)          |
+
+---
+
+## 📦 Installation
+
+### 🐍 Python Environment
 
 ```bash
+git clone https://github.com/rsonic17/llm-prompt-testing-utility.git
+cd llm-prompt-testing-utility
 python -m venv venv
-.env\Scripts\Activate.ps1
+source venv/bin/activate   # or venv\Scripts\activate on Windows
 pip install -r requirements.txt
 ```
 
-### 2. Configure `.env`
+### 🔐 Setup AWS Credentials
 
-```
-AWS_ACCESS_KEY_ID=your-key
-AWS_SECRET_ACCESS_KEY=your-secret
-AWS_DEFAULT_REGION=us-east-1
-BEDROCK_MODEL_ID=anthropic.claude-3-haiku-20240307-v1:0
-```
+Ensure you have:
 
-### 3. Run the App
+- AWS credentials in `~/.aws/credentials`
+- AWS region and model ID set via environment:
 
 ```bash
-python app/main.py
+export AWS_REGION=us-east-1
+export BEDROCK_MODEL_ID=anthropic.claude-3-haiku-20240307-v1:0
 ```
 
-Then visit: [http://localhost:5000](http://localhost:5000)
+You can also use a `.env` file and `python-dotenv`.
 
 ---
 
-## 🧪 File Structure
+## 🧪 Usage
+
+```bash
+streamlit run app.py
+```
+
+1. Upload a `.eml` file
+2. Paste a Claude-compatible prompt (use `{email_data}` as placeholder)
+3. Click:
+   - `🧠 Extract with LLM`
+   - `✨ Suggest Better Prompt`
+   - `📝 Compare Prompts`
+4. View results in 4 scrollable panels
+
+---
+
+## 🔤 Prompt Format (Example)
+
+Paste this in the "User Prompt" box:
 
 ```
-llm_email_parser_app/
-├── app/
-│   ├── main.py
-│   ├── llm.py
-│   ├── parser.py
-│   ├── prompt.py
-│   ├── regex_evaluator.py
-│   ├── utils.py
-│   ├── templates/index.html
-│   └── static/{styles.css, app.js}
-├── uploads/
-├── attachments/
-├── requirements.txt
-├── .env
-├── .gitignore
-└── README.md
+Extract the following fields from this email:
+- Buyer Name
+- Sender Email
+- Date
+- Payment Amount
+
+Output JSON like:
+
+{
+  "buyer": "...",
+  "sender": "...",
+  "amount": "...",
+  "date": "..."
+}
+
+Email:
+{email_data}
 ```
 
 ---
 
-## 🧠 Security
+## 🖼 UI Overview
 
-- Regex functions sandboxed and logged
-- No dangerous eval/imports allowed
-- `.env` excluded from Git
+> 📸 _You can add screenshots here later._
+
+| Panel              | Purpose                      |
+|--------------------|------------------------------|
+| 📄 Email Preview   | Raw email text               |
+| 📦 LLM Extracted Data | Claude’s structured JSON |
+| 🌟 Improved Prompt | Claude's few-shot rewrite    |
+| 📑 Prompt Comparison | Markdown table comparison  |
+
+---
+
+## 👥 Contributing
+
+Pull requests are welcome. Please open an issue to discuss any major changes.
 
 ---
 
 ## 📄 License
 
-MIT (You’re free to use, modify, or fork.)
+MIT License © 2025 [Your Name / Org]
