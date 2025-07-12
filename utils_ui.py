@@ -1,4 +1,5 @@
 import streamlit as st
+import re
 import json
 from llm import query_claude
 
@@ -21,10 +22,12 @@ PANEL_STYLE = """
 
 def format_json_nicely(content):
     try:
-        if isinstance(content, str):
-            parsed = json.loads(content.replace("'", "\""))
-        else:
-            parsed = content
+        # Extract first JSON object or array using regex
+        match = re.search(r"({.*}|\[.*\])", content, re.DOTALL)
+        if not match:
+            raise ValueError("No valid JSON found in Claude output.")
+        json_string = match.group(1)
+        parsed = json.loads(json_string)
         return json.dumps(parsed, indent=2)
     except Exception as e:
         print(f"⚠️ JSON formatting failed: {e}")
@@ -32,28 +35,27 @@ def format_json_nicely(content):
 
 def clean_improved_prompt(text):
     lines = text.strip().splitlines()
-    # Skip leading intro lines until actual prompt starts
     for i, line in enumerate(lines):
         if "prompt" in line.lower() and len(line.strip()) < 80:
             return "\n".join(lines[i+1:]).strip()
     return text.strip()
 
 def render_readonly_panel(title, content, key_prefix, height, is_json=False, html_mode=False):
+    st.markdown(f"**{title}**", unsafe_allow_html=True)
+
     if is_json and content:
         content = format_json_nicely(content)
-
-    if html_mode:
+        st.code(content, language="json")
+    elif html_mode:
         display_content = content if content else f"<i>No {title.lower()} yet.</i>"
-        st.markdown(f"**{title}**", unsafe_allow_html=True)
         st.markdown(
             f"<div style='{PANEL_STYLE.format(height=height)}'>{display_content}</div>",
             unsafe_allow_html=True
         )
     else:
         display_content = content if content else f"No {title.lower()} yet."
-        st.markdown(f"**{title}**")
         st.markdown(
-            f"<div style='{PANEL_STYLE.format(height=height)}'>{display_content}</div>",
+            f"<div style='{PANEL_STYLE.format(height=height)}'><pre>{display_content}</pre></div>",
             unsafe_allow_html=True
         )
 
@@ -104,7 +106,6 @@ def render_app_ui():
                 "The buyer is Scranton Manufacturing Co Inc and the last 4 digits of the payment card are 0906.\n"
                 "The total amount paid was $7,435.21."
             )
-
             improvement_prompt = f"""
 You are a prompt optimization expert.
 
@@ -112,11 +113,12 @@ Rewrite the user's extraction prompt into a clean, scalable, few-shot natural la
 
 Requirements:
 - Clear and user-friendly
-- Reusable across various email formats
-- Contains one natural-language example output
-- Avoid technical jargon
+- Economical in terms of token usage
+- Flexible and reusable across different email formats
+- Natural language (not JSON or code)
+- Includes one natural-language example output
 
-Return **only** the rewritten prompt.
+Return **only** the rewritten prompt without any additional text.
 
 ## Original Prompt
 {st.session_state.user_prompt}
@@ -140,9 +142,10 @@ Step 1: Create a markdown table comparing:
 - Completeness
 - Flexibility
 - Reusability
+- Economic value
 - Ease of Understanding
 
-Step 2: Add 2–3 sentences explaining which is better and why.
+Step 2: Add 2–3 sentences explaining which is better and why. Be specific about the differences.
 
 Return only markdown.
 
@@ -153,17 +156,13 @@ Return only markdown.
 {st.session_state.improved_prompt}
 """
             result = query_claude(comparison_prompt)
-
-            # Convert markdown table to HTML table for better display
             markdown = result["extracted_data"]
 
-            # Convert simple markdown table to HTML
-            html_table = markdown
             if markdown.startswith("|"):
                 try:
                     rows = [row.strip() for row in markdown.strip().splitlines() if row.strip()]
                     header = rows[0].split("|")[1:-1]
-                    body = rows[2:]  # skip header & separator
+                    body = rows[2:]
                     table_html = "<table><tr>" + "".join(f"<th>{h.strip()}</th>" for h in header) + "</tr>"
                     for row in body:
                         cols = row.split("|")[1:-1]
