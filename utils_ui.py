@@ -22,7 +22,6 @@ PANEL_STYLE = """
 
 def format_json_nicely(content):
     try:
-        # Extract first JSON object or array using regex
         match = re.search(r"({.*}|\[.*\])", content, re.DOTALL)
         if not match:
             raise ValueError("No valid JSON found in Claude output.")
@@ -36,8 +35,12 @@ def format_json_nicely(content):
 def clean_improved_prompt(text):
     lines = text.strip().splitlines()
     for i, line in enumerate(lines):
-        if "prompt" in line.lower() and len(line.strip()) < 80:
-            return "\n".join(lines[i+1:]).strip()
+        if (
+            "prompt" in line.lower()
+            or "here is" in line.lower()
+            or line.lower().startswith("rewritten")
+        ) and len(line.strip()) < 100:
+            return "\n".join(lines[i + 1 :]).strip()
     return text.strip()
 
 def render_readonly_panel(title, content, key_prefix, height, is_json=False, html_mode=False):
@@ -50,17 +53,18 @@ def render_readonly_panel(title, content, key_prefix, height, is_json=False, htm
         display_content = content if content else f"<i>No {title.lower()} yet.</i>"
         st.markdown(
             f"<div style='{PANEL_STYLE.format(height=height)}'>{display_content}</div>",
-            unsafe_allow_html=True
+            unsafe_allow_html=True,
         )
     else:
         display_content = content if content else f"No {title.lower()} yet."
         st.markdown(
             f"<div style='{PANEL_STYLE.format(height=height)}'><pre>{display_content}</pre></div>",
-            unsafe_allow_html=True
+            unsafe_allow_html=True,
         )
 
 def render_app_ui():
-    st.markdown("""
+    st.markdown(
+        """
     <style>
         .stColumns { gap: 1rem; }
         .stColumns > div { min-width: 0; flex: 1; }
@@ -79,17 +83,25 @@ def render_app_ui():
         th {
             background-color: #333;
         }
+        .stButton > button {
+            border-radius: 4px;
+            padding: 0.5rem 1rem;
+            margin-top: 0.5rem;
+        }
     </style>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
 
     st.markdown("## 🧠 User Prompt")
     st.session_state.user_prompt = st.text_area(
         "Paste your prompt below (use `{email_data}` as placeholder):",
         value=st.session_state.user_prompt,
-        height=180
+        height=180,
+        key="user_prompt_text_area"
     )
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
 
     with col1:
         if st.button("🧠 Extract with LLM"):
@@ -98,14 +110,38 @@ def render_app_ui():
             result = query_claude(prompt)
             st.session_state.extracted_data = result["extracted_data"]
 
+            # Clear out other panels
+            st.session_state.improved_prompt = ""
+            st.session_state.comparison = ""
+
+
     with col2:
         if st.button("✨ Suggest Better Prompt"):
-            email_snippet = st.session_state.email_data.get("text", "")[:1000]
-            sample_output = (
-                "The email is from `notifications@paymode.com` to `carla.wells@sunbeltrentals.com` on May 14, 2025.\n"
-                "The buyer is Scranton Manufacturing Co Inc and the last 4 digits of the payment card are 0906.\n"
-                "The total amount paid was $7,435.21."
-            )
+            email_snippet = st.session_state.email_data.get("text", "")[:5000]
+            sample_output = json.dumps({
+                "to_email": "carla.wells@sunbeltrentals.com",
+                "from_email": "notifications@paymode.com",
+                "received_date": "2025-05-14T00:00:00",
+                "payment_card_last4": "0906",
+                "payment_buyer_name": "Scranton Manufacturing Co Inc",
+                "payment_buyer_vendor_id": None,
+                "payment_merchant_reference_number": None,
+                "payment_amount": 7435.21,
+                "payment_order_notes": None,
+                "payment_merchant_name": None,
+                "payment_card_number": None,
+                "card_expiration_date": None,
+                "token_key": "Scranton Manufacturing Co_0906",
+                "invoices": [
+                    {
+                        "invoice_number": "3955",
+                        "account_number": None,
+                        "invoice_date": "2024-12-10",
+                        "invoice_amount": "84.05"
+                    }
+                ]
+            }, indent=2)
+
             improvement_prompt = f"""
 You are a prompt optimization expert.
 
@@ -118,7 +154,7 @@ Requirements:
 - Natural language (not JSON or code)
 - Includes one natural-language example output
 
-Return **only** the rewritten prompt without any additional text.
+Return **only** the rewritten prompt body — no email data or formatting instructions.
 
 ## Original Prompt
 {st.session_state.user_prompt}
@@ -130,7 +166,18 @@ Return **only** the rewritten prompt without any additional text.
 {sample_output}
 """
             result = query_claude(improvement_prompt)
-            st.session_state.improved_prompt = clean_improved_prompt(result["extracted_data"])
+            improved_body = clean_improved_prompt(result["extracted_data"])
+
+            final_prompt = improved_body.strip() + "\n\n" + \
+                "Do not include any explanations, notes, or other text outside the JSON object.\n" \
+                "Format numbers as actual numbers (not strings) where appropriate.\n" \
+                "Use null (not \"null\" in quotes) for missing values.\n" \
+                "If any field is missing, set it to null.\n" \
+                "Exclude any summary fields like \"invoice_amount\" at the root level — only return it inside individual invoices.\n\n" \
+                "Email Data:\n{email_data}"
+
+
+            st.session_state.improved_prompt = final_prompt
 
     with col3:
         if st.button("📝 Compare Prompts"):
@@ -175,6 +222,11 @@ Return only markdown.
                     st.session_state.comparison = markdown
             else:
                 st.session_state.comparison = markdown
+
+    with col4:
+        if st.button("📋 Copy Improved Prompt"):
+            st.code(st.session_state.improved_prompt or "No improved prompt yet", language="text")
+            st.success("✅ Prompt copied to clipboard. (Use Ctrl+C manually)", icon="✅")
 
     st.markdown("---")
 
