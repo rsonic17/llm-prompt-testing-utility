@@ -1,7 +1,7 @@
 import streamlit as st
 import re
 import json
-from llm import query_claude
+from llm import query_claude, get_available_models, build_email_prompt
 
 PANEL_HEIGHT = 800
 PANEL_STYLE = """
@@ -63,8 +63,7 @@ def render_readonly_panel(title, content, key_prefix, height, is_json=False, htm
         )
 
 def render_app_ui():
-    st.markdown(
-        """
+    st.markdown("""
     <style>
         .stColumns { gap: 1rem; }
         .stColumns > div { min-width: 0; flex: 1; }
@@ -89,11 +88,13 @@ def render_app_ui():
             margin-top: 0.5rem;
         }
     </style>
-    """,
-        unsafe_allow_html=True,
-    )
+    """, unsafe_allow_html=True)
 
     st.markdown("## 🧠 User Prompt")
+
+    model_options = get_available_models()
+    st.session_state.selected_model = st.selectbox("Select LLM model:", options=model_options, index=0)
+
     st.session_state.user_prompt = st.text_area(
         "Paste your prompt below (use `{email_data}` as placeholder):",
         value=st.session_state.user_prompt,
@@ -101,23 +102,31 @@ def render_app_ui():
         key="user_prompt_text_area"
     )
 
-    col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
+    col1, col2, col3, col4 = st.columns(4)
 
     with col1:
         if st.button("🧠 Extract with LLM"):
-            email_body = st.session_state.email_data.get("text", "")
-            prompt = st.session_state.user_prompt.replace("{email_data}", email_body)
-            result = query_claude(prompt)
-            st.session_state.extracted_data = result["extracted_data"]
-
-            # Clear out other panels
+            st.session_state.extracted_data = ""
             st.session_state.improved_prompt = ""
             st.session_state.comparison = ""
 
+            if isinstance(st.session_state.email_data, dict):
+                full_prompt = st.session_state.user_prompt.replace(
+                    "{email_data}",
+                    build_email_prompt(st.session_state.email_data)
+                )
+            else:
+                full_prompt = st.session_state.user_prompt
+
+            result = query_claude(full_prompt, model_id=st.session_state.selected_model)
+            st.session_state.extracted_data = result["extracted_data"]
 
     with col2:
         if st.button("✨ Suggest Better Prompt"):
-            email_snippet = st.session_state.email_data.get("text", "")[:5000]
+            st.session_state.improved_prompt = ""
+            st.session_state.comparison = ""
+
+            email_snippet = st.session_state.email_data.get("text", "")[:5000] if isinstance(st.session_state.email_data, dict) else ""
             sample_output = json.dumps({
                 "to_email": "carla.wells@sunbeltrentals.com",
                 "from_email": "notifications@paymode.com",
@@ -165,7 +174,7 @@ Return **only** the rewritten prompt body — no email data or formatting instru
 ## Example Output
 {sample_output}
 """
-            result = query_claude(improvement_prompt)
+            result = query_claude(improvement_prompt, model_id=st.session_state.selected_model)
             improved_body = clean_improved_prompt(result["extracted_data"])
 
             final_prompt = improved_body.strip() + "\n\n" + \
@@ -176,11 +185,12 @@ Return **only** the rewritten prompt body — no email data or formatting instru
                 "Exclude any summary fields like \"invoice_amount\" at the root level — only return it inside individual invoices.\n\n" \
                 "Email Data:\n{email_data}"
 
-
             st.session_state.improved_prompt = final_prompt
 
     with col3:
         if st.button("📝 Compare Prompts"):
+            st.session_state.comparison = ""
+
             comparison_prompt = f"""
 Compare the following two prompts.
 
@@ -202,7 +212,7 @@ Return only markdown.
 ## Prompt B (Improved Prompt)
 {st.session_state.improved_prompt}
 """
-            result = query_claude(comparison_prompt)
+            result = query_claude(comparison_prompt, model_id=st.session_state.selected_model)
             markdown = result["extracted_data"]
 
             if markdown.startswith("|"):
@@ -225,21 +235,21 @@ Return only markdown.
 
     with col4:
         if st.button("📋 Copy Improved Prompt"):
-            st.code(st.session_state.improved_prompt or "No improved prompt yet", language="text")
-            st.success("✅ Prompt copied to clipboard. (Use Ctrl+C manually)", icon="✅")
+            st.session_state.copied = st.session_state.improved_prompt or "No improved prompt to copy"
+            st.code(st.session_state.copied, language="text")
+            st.success("✅ Prompt shown above. Copy manually using Ctrl+C.")
 
     st.markdown("---")
 
     colA, colB, colC, colD = st.columns(4, gap="small")
-
     with colA:
-        render_readonly_panel("📄 Email Preview", st.session_state.email_data.get("text", ""), "email_preview", PANEL_HEIGHT)
-
+        preview_text = ""
+        if isinstance(st.session_state.email_data, dict):
+            preview_text = build_email_prompt(st.session_state.email_data)
+        render_readonly_panel("📄 Email Preview", preview_text, "email_preview", PANEL_HEIGHT)
     with colB:
         render_readonly_panel("📦 LLM Extracted Data", st.session_state.extracted_data, "llm_extracted", PANEL_HEIGHT, is_json=True)
-
     with colC:
         render_readonly_panel("🌟 Improved Prompt", st.session_state.improved_prompt, "improved_prompt", PANEL_HEIGHT)
-
     with colD:
         render_readonly_panel("📑 Prompt Comparison", st.session_state.comparison, "prompt_comparison", PANEL_HEIGHT, html_mode=True)
